@@ -42,27 +42,17 @@ pub fn choose_auto_review(
     if models.is_empty() {
         bail!("no compatible approval models available; check the CAPI seat and Codex catalog");
     }
-    let default = models.iter().position(|m| m == "gpt-5.6-luna").unwrap_or(0);
     writeln!(output, "Available approval models:")?;
     for (index, model) in models.iter().enumerate() {
-        writeln!(
-            output,
-            "  {}. {model}{}",
-            index + 1,
-            if index == default { " (default)" } else { "" }
-        )?;
+        writeln!(output, "  {}. {model}", index + 1)?;
     }
     loop {
         let value = answer(
             input,
             output,
-            &format!("Select approval model [{}]: ", default + 1),
+            &format!("Select approval model (1-{}): ", models.len()),
         )?;
-        let index = if value.is_empty() {
-            Some(default)
-        } else {
-            value.parse::<usize>().ok().and_then(|n| n.checked_sub(1))
-        };
+        let index = value.parse::<usize>().ok().and_then(|n| n.checked_sub(1));
         if let Some(model) = index.and_then(|index| models.get(index)) {
             writeln!(output, "Selected approval model: {model}")?;
             return Ok(Some(model.clone()));
@@ -80,7 +70,7 @@ mod tests {
         let result = choose_auto_review(
             &mut answers.as_bytes(),
             &mut output,
-            &["gpt-6-astra".into(), "gpt-5.6-luna".into()],
+            &["model-a".into(), "model-b".into()],
         );
         (result, String::from_utf8(output).unwrap())
     }
@@ -95,32 +85,35 @@ mod tests {
     }
 
     #[test]
-    fn explicit_choice_and_default_select_available_models() {
-        assert_eq!(
-            choose("yes\n1\n").0.unwrap().as_deref(),
-            Some("gpt-6-astra")
-        );
-        assert_eq!(choose("Y\n\n").0.unwrap().as_deref(), Some("gpt-5.6-luna"));
+    fn model_selection_requires_an_explicit_choice_even_for_a_single_model() {
+        assert_eq!(choose("yes\n1\n").0.unwrap().as_deref(), Some("model-a"));
+        let (result, output) = choose("Y\n\n2\n");
+        assert_eq!(result.unwrap().as_deref(), Some("model-b"));
+        assert!(output.contains("Please enter a number from 1 to 2."));
+        assert!(!output.contains("(default)"));
         let mut output = Vec::new();
         assert_eq!(
-            choose_auto_review(&mut &b"y\n\n"[..], &mut output, &["gpt-5.5".into()])
+            choose_auto_review(&mut &b"y\n\n1\n"[..], &mut output, &["only-model".into()])
                 .unwrap()
                 .as_deref(),
-            Some("gpt-5.5")
+            Some("only-model")
         );
+        assert!(String::from_utf8(output)
+            .unwrap()
+            .contains("Please enter a number from 1 to 1."));
     }
 
     #[test]
     fn invalid_answers_retry_without_selecting_a_model() {
         let (result, output) = choose("maybe\ny\n0\n3\n-1\ntext\n2\n");
-        assert_eq!(result.unwrap().as_deref(), Some("gpt-5.6-luna"));
+        assert_eq!(result.unwrap().as_deref(), Some("model-b"));
         assert!(output.contains("Please enter y or n"));
         assert_eq!(output.matches("Please enter a number").count(), 4);
     }
 
     #[test]
     fn closed_input_and_an_empty_model_list_do_not_silently_install() {
-        for input in ["", "y\n", "y\n0\n"] {
+        for input in ["", "y\n", "y\n\n", "y\n0\n"] {
             assert!(choose(input)
                 .0
                 .unwrap_err()

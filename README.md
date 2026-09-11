@@ -104,9 +104,9 @@ When run in a terminal, `codex-copilot install` (or bare `codex-copilot`) asks
 whether to configure automatic approval review. Answer yes to select a reviewer
 by number from the available model list. Only enabled CAPI models supporting
 WebSocket Responses and compatible with the Codex catalog are offered.
-`gpt-5.6-luna` is the default selection when available; otherwise the first
-listed model is the default. Invalid answers are retried, and closing input
-cancels setup before files are written.
+Model selection requires an explicit number, even when only one model is
+available. No reviewer is recommended or selected by default. Blank or invalid
+answers are retried, and closing input cancels setup before files are written.
 
 Answering no (the default) leaves `approvals_reviewer` out of the overlay,
 so Codex inherits its reviewer setting from the base configuration. The
@@ -115,12 +115,12 @@ question explicitly. Non-interactive runs and `--token-stdin` also skip the
 question; scripts can select a reviewer directly with:
 
 ```console
-$ codex-copilot install --auto-review-model gpt-5.6-luna
+$ codex-copilot install --auto-review-model <model-id>
 $ codex --profile copilot
 ```
 
 The installer sets `approvals_reviewer = "auto_review"` and writes
-`"auto_review_model_override": "gpt-5.6-luna"` into each CAPI-served model's
+`"auto_review_model_override": "<model-id>"` into each CAPI-served model's
 catalog entry, so switching conversation models keeps the selected reviewer.
 Codex then sends the real reviewer model ID directly to CAPI. This uses
 [Codex's native model selection](https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/core/src/guardian/review.rs#L872),
@@ -132,18 +132,8 @@ Installation fails before writing if the reviewer is missing from CAPI or the
 catalog, disabled, or lacks `ws:/responses`. The served catalog entries must
 already define `auto_review_model_override`; otherwise update Codex and use
 its matching bundled catalog. `status` checks both the saved review mapping
-and the review model's availability. This remains experimental: the live
-check below establishes routing and response compatibility, not review quality
-across arbitrary commands. Reviewer inference consumes additional CAPI usage.
-
-Verified on 2026-09-11 with Codex 0.153.4 and an Enterprise CAPI seat: in an
-isolated temporary Git repository, a `gpt-5.6-luna` review session returned
-`{"outcome":"allow"}` for an explicitly authorized `git add -- sample.txt`,
-and Codex then staged the file. The complete Luna conversation and review
-took 8.6 seconds in one run. A second run using the installer-generated profile
-with `gpt-6-astra` for conversation and `gpt-5.6-luna` for review also staged the
-file successfully in 10.1 seconds, returning risk, authorization, outcome, and
-rationale fields. These are individual smoke-test timings, not benchmarks.
+and the review model's availability. Reviewer inference consumes additional
+CAPI usage.
 
 Without an override, Codex can select the bundled `codex-auto-review` model,
 which was absent from this seat's CAPI model listing. Local logs showed a

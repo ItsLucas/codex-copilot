@@ -160,6 +160,57 @@ overlay and catalog parse). `codex doctor` is not profile-aware, so the real
 end-to-end check is to start `codex --profile copilot` and send one short
 message.
 
+## Approval review
+
+When run in a terminal, `codex-copilot install` (or bare `codex-copilot`) asks
+whether to configure automatic approval review. Answer yes to select a reviewer
+by number from the available model list. Only enabled CAPI models supporting
+WebSocket Responses and compatible with the Codex catalog are offered.
+Model selection requires an explicit number, even when only one model is
+available. No reviewer is recommended or selected by default. Blank or invalid
+answers are retried, and closing input cancels setup before files are written.
+
+Answering no (the default) leaves `approvals_reviewer` out of the overlay,
+so Codex inherits its reviewer setting from the base configuration. The
+installer never forces manual review. Use `--skip-auto-review` to skip the
+question explicitly. Non-interactive runs and `--token-stdin` also skip the
+question; scripts can select a reviewer directly with:
+
+```console
+$ codex-copilot install --auto-review-model <model-id>
+$ codex --profile copilot
+```
+
+The installer sets `approvals_reviewer = "auto_review"` and writes
+`"auto_review_model_override": "<model-id>"` into each CAPI-served model's
+catalog entry, so switching conversation models keeps the selected reviewer.
+Codex then sends the real reviewer model ID directly to CAPI. This uses
+[Codex's native model selection](https://github.com/openai/codex/blob/rust-v0.153.4/codex-rs/core/src/guardian/review.rs#L872),
+with no alias or proxy. Model slugs, Guardian policy messages, approval policy,
+and sandbox settings are preserved. Codex still handles denials, invalid
+responses, and review timeouts.
+
+Installation fails before writing if the reviewer is missing from CAPI or the
+catalog, disabled, or lacks `ws:/responses`. The served catalog entries must
+already define `auto_review_model_override`; otherwise update Codex and use
+its matching bundled catalog. `status` checks both the saved review mapping
+and the review model's availability. Reviewer inference consumes additional
+CAPI usage.
+
+Without an override, Codex can select the bundled `codex-auto-review` model,
+which was absent from this seat's CAPI model listing. Local logs showed a
+successful WebSocket connection followed by an unhandled `error` event and
+an automatic-review timeout.
+
+Reinstall and decline automatic approval setup (or use `--skip-auto-review`)
+to remove the generated reviewer override and restore inheritance. This does
+not disable automatic review if it is enabled in the base configuration.
+
+Restart or resume with the profile after changing it; an already running
+session can retain its previous reviewer selection. To request automatic
+review when the base approval policy does not do so, Codex's `--approve-for-me`
+option also selects the workspace-write sandbox.
+
 ## Per-model calibration
 
 Codex resolves a model's window from its **catalog entry**, and the global
